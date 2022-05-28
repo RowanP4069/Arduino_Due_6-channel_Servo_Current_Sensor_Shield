@@ -44,16 +44,16 @@
     SOFTWARE.
 
   PIN USAGE:
-    Shield JP1+ - Servo 1 connector, power supply / MCU side
-    Shield JP1- - Servo 1 connector, servo side
-    Shield JP2 through 6 +&- - as above for remaining servos.
-    Due A8 (input) - to 74HC4051 Common (Z) (level shifted)
-    Due D2 (output)- to 74HC4051 (S0 / A) selector
-    Due D3 (output)- to 74HC4051 (S1 / B) selector
-    Due D4 (output)- to 74HC4051 (S2 / C) selector
-    Due 5V - to 74HC4051 Vcc
-    Due 5V - to ACS712 Vcc
-    ACS712 VIout (1 through 6) - to 74HC4051 (Y1 through Y6)
+    Shield JP1+               Servo 1 connector, power supply / MCU side
+    Shield JP1-               Servo 1 connector, servo side
+    Shield JP2 through 6 +&-  as above for remaining servos.
+    Due A8 (input)            to 74HC4051 Common (Z) (level shifted)
+    Due D2 (output)           to 74HC4051 (S0 / A) selector
+    Due D3 (output)           to 74HC4051 (S1 / B) selector
+    Due D4 (output)           to 74HC4051 (S2 / C) selector
+    Due 5V                    to 74HC4051 Vcc
+    Due 5V                    to ACS712 Vcc
+    ACS712 VIout (1 through 6)  to 74HC4051 (Y1 through Y6)
   */
 
 //Constants
@@ -64,8 +64,8 @@
   const float r2 = 4700.0; //Value of R1 (ohms) in level shift voltage divider
   const float dueRefVoltage = 3.3; //Ref. https://www.arduino.cc/reference/en/language/functions/analog-io/analogreference/ 
   const int dueNumSamples = 1024; //Ref. https://www.arduino.cc/reference/en/language/functions/analog-io/analogread/ 
-  const float vioutq = 2.26; // VIout(Q) value of ACS712 sensor. The zero current output voltage.
-                             // NB. vioutq(observed) = 2.26V; vioutq(calculated) = 1.65V 
+  const float vioutq = 2.14; // VIout(Q) value of ACS712 sensor. The zero current output voltage.
+                             // NB. this is vioutq(observed); c.f. vioutq(calculated) = 1.65V 
   const float sensitivity = 0.185; // ACS712 sensitivity in mV/A 
   const int numReadings = 10; // Number of readings in the moving average calculation window
   const float ewmaAlpha = 0.1; // The exponential weighted moving average (EWMA) alpha value. Towards 0 = weight previous readings; towards 1 = weight newest reading
@@ -99,7 +99,7 @@ void setup() {
   pinMode(zInput, INPUT); // Set up Z as an input
   for (int i=pin1; i<=pin6; i++) { // For each of the sensors connected to the mux ...
     selectMuxPin(muxPin[i]); // Select the sensor to be read
-    readingEwma[i] = (vioutq - (float(analogRead(zInput)) * dueRefVoltage / float(dueNumSamples) * (r1+r2) / r2)) / sensitivity; // and make an initial reading for EWMA index 1
+    readingEwma[i] = ((float(analogRead(zInput)) * dueRefVoltage / float(dueNumSamples) * (r1+r2) / r2) - vioutq) / sensitivity; // and make an initial reading for EWMA index 1
   }
   currentTime = millis();
   prevReadTime = currentTime;
@@ -116,11 +116,13 @@ void readSensors() {
   for (int i=pin1; i<=pin6; i++) { // For each of the sensors connected to the mux ...
     selectMuxPin(muxPin[i]); // Select the sensor to be read
     readingTotal[i] = readingTotal[i] - readingAmps[i] [readIndex]; //Deduct the oldest reading from the sensor total
-    readingAmps[i][readIndex] = (vioutq - (float(analogRead(zInput)) * dueRefVoltage / float(dueNumSamples) * (r1+r2) / r2)) / sensitivity; //Make a new reading
+    //float readingVolts = float(analogRead(zInput)) * dueRefVoltage / float(dueNumSamples) * (r1+r2) / r2;
+    readingAmps[i][readIndex] = ((float(analogRead(zInput)) * dueRefVoltage / float(dueNumSamples) * (r1+r2) / r2) - vioutq) / sensitivity; //Make a new reading
     readingTotal[i] = readingTotal[i] + readingAmps[i][readIndex]; // Add the new reading to the sensor total
     readingAverage[i] = readingTotal[i] / numReadings;   // calculate the running average 
     readingEwma[i] = (ewmaAlpha * readingAmps[i][readIndex]) + (1-ewmaAlpha) * readingEwma[i];
     Serial.print(String(muxPin[i]) + "Ip(ewma):" + String(readingEwma[i]) + ","); // Output for Arduino IDE Serial Plotter 
+    //Serial.print(String(muxPin[i]) + "volts:" + String(readingVolts) + ","); // This provides an observation of the actual Viout(q) value 
   }
   Serial.println();
   readIndex = readIndex + 1; // advance to the next position in the revolving buffer
